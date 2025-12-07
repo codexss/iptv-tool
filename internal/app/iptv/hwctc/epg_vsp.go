@@ -168,8 +168,44 @@ func (c *Client) getVspChannelDateProgram(ctx context.Context, token *Token, cha
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode == http.StatusNotFound || resp.StatusCode >= http.StatusInternalServerError {
-		return nil, ErrEPGApiNotFound
+	if resp.StatusCode == resp.StatusCode >= http.StatusInternalServerError {
+		// 第一次遇到 5xx 错误，等待1秒后重试
+		time.Sleep(1 * time.Second)
+		
+		// 重新创建请求
+		retryReq, err := http.NewRequestWithContext(ctx, http.MethodPost,
+			fmt.Sprintf("http://%s/VSP/V3/QueryPlaybillList", c.host), bytes.NewReader(payloadBytes))
+		if err != nil {
+			return nil, err
+		}
+		
+		// 设置请求头
+		c.setCommonHeaders(retryReq)
+		retryReq.Header.Set("Content-Type", "application/x-www-form-urlencoded; charset=UTF-8")
+		retryReq.Header.Set("X-Requested-With", "XMLHttpRequest")
+		
+		// 设置Cookie
+		retryReq.AddCookie(&http.Cookie{
+			Name:  "JSESSIONID",
+			Value: token.JSESSIONID,
+		})
+		
+		// 执行重试请求
+		retryResp, err := c.httpClient.Do(retryReq)
+		if err != nil {
+			return nil, err
+		}
+		defer retryResp.Body.Close()
+		
+		// 如果重试后仍然失败，返回错误
+		if retryResp.StatusCode == http.StatusNotFound || retryResp.StatusCode >= http.StatusInternalServerError {
+			return nil, ErrEPGApiNotFound
+		} else if retryResp.StatusCode != http.StatusOK {
+			return nil, fmt.Errorf("http status code: %d", retryResp.StatusCode)
+		}
+		
+		// 使用重试的响应
+		resp = retryResp
 	} else if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("http status code: %d", resp.StatusCode)
 	}
