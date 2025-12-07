@@ -168,7 +168,7 @@ func (c *Client) getVspChannelDateProgram(ctx context.Context, token *Token, cha
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode == resp.StatusCode >= http.StatusInternalServerError {
+	if resp.StatusCode >= http.StatusInternalServerError {
 		// 第一次遇到 5xx 错误，等待1秒后重试
 		time.Sleep(1 * time.Second)
 		
